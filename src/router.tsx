@@ -1,6 +1,7 @@
 // router.tsx
 import { createBrowserRouter } from "react-router";
 import { AppLayout } from "./layout";
+import Analyze from "./pages/Analyze";
 import Main from "./pages/Main";
 
 export const Router = createBrowserRouter([
@@ -11,6 +12,10 @@ export const Router = createBrowserRouter([
       {
         path: "/",
         element: <Main />,
+      },
+      {
+        path: "/analyze",
+        element: <Analyze />,
       },
     ],
   },
