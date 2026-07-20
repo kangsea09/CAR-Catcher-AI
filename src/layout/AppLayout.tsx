@@ -2,7 +2,7 @@ import { Outlet } from "react-router";
 
 export const AppLayout = () => {
   return (
-    <main className="w-full mt-[70px]">
+    <main className="min-h-screen w-full">
       <Outlet />
     </main>
   );
