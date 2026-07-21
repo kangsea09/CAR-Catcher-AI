@@ -164,18 +164,27 @@ export const AnalysisResultsPanel = ({
         >
           {file ? (
             reference ? (
-              <img
-                alt={`${topCandidateName} 참고 사진`}
-                className="h-full w-full object-contain"
-                onError={() => {
-                  setReferenceState({
-                    candidateName: topCandidateName,
-                    reference: null,
-                    resolved: true,
-                  });
-                }}
-                src={reference.url}
-              />
+              <a
+                aria-label={`${topCandidateName} Wikimedia 출처 페이지 열기`}
+                className="block h-full w-full cursor-pointer"
+                href={reference.sourceUrl}
+                rel="noreferrer"
+                target="_blank"
+                title={`${reference.title} 출처 페이지 열기`}
+              >
+                <img
+                  alt={`${topCandidateName} 참고 사진`}
+                  className="h-full w-full object-contain"
+                  onError={() => {
+                    setReferenceState({
+                      candidateName: topCandidateName,
+                      reference: null,
+                      resolved: true,
+                    });
+                  }}
+                  src={reference.url}
+                />
+              </a>
             ) : selected && referenceResolved ? (
               <VehicleCrop isVideo={isVideo} sourceUrl={mediaUrl} vehicle={selected} />
             ) : (
