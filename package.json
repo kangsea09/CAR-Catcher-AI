@@ -5,13 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:api": "python -m uvicorn app:app --app-dir server --reload --port 8000",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
-    "firebase": "^12.16.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.1",

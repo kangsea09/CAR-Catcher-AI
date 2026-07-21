@@ -25,7 +25,7 @@ const stageLabels: Record<string, string> = {
   "frame-stack": "연속 프레임 합성 중",
   encode: "보정 이미지 생성 중",
   "request-package": "분석 자료 준비 중",
-  "gemini-analysis": "Gemini 차량 분석 중",
+  "local-analysis": "로컬 AI 차량 분석 중",
   "response-validation": "분석 결과 검증 중",
   complete: "분석 완료",
 };
@@ -42,8 +42,8 @@ const getErrorMessage = (error: unknown) => {
     return "분석 요청 크기가 제한을 초과했습니다. 더 짧거나 용량이 작은 동영상을 사용하세요.";
   }
 
-  if (message.includes("App Check")) {
-    return "Firebase App Check 인증에 실패했습니다. 디버그 토큰 또는 배포 도메인 설정을 확인하세요.";
+  if (message.includes("탐지 모델이 없습니다")) {
+    return "로컬 탐지 모델이 없습니다. PowerShell에서 .\\server\\setup.ps1을 먼저 실행하세요.";
   }
 
   return message;
@@ -64,6 +64,7 @@ const Analyze = () => {
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [analysisStage, setAnalysisStage] = useState("분석 준비 중");
   const [analysisError, setAnalysisError] = useState("");
+  const [enhancedImage, setEnhancedImage] = useState("");
   const mediaUrl = useObjectUrl(file);
   const isVideo = isVideoFile(file);
   const displayedProgress = Math.floor(analysisProgress);
@@ -105,6 +106,7 @@ const Analyze = () => {
       setAnalysisProgress(0);
       setAnalysisStage("분석 준비 중");
       setAnalysisError("");
+      setEnhancedImage("");
       setAnalysisStatus("analyzing");
 
       try {
@@ -114,7 +116,7 @@ const Analyze = () => {
             analysisTargetProgressRef.current,
             Math.min(97, update.progress),
           );
-          setAnalysisStage(stageLabels[update.stage] ?? "AI 분석 중");
+          setAnalysisStage(stageLabels[update.stage] ?? "로컬 AI 분석 중");
         });
 
         if (requestIdRef.current !== requestId) return;
@@ -122,10 +124,11 @@ const Analyze = () => {
         await new Promise((resolve) => window.setTimeout(resolve, 700));
         if (requestIdRef.current !== requestId) return;
         setVehicles(result.vehicles);
+        setEnhancedImage(result.enhancedImage ?? "");
         setAnalysisProgress(100);
         setAnalysisStage("분석 완료");
         setAnalysisStatus("complete");
-        setIsEnhanced(result.vehicles.length > 0);
+        setIsEnhanced(Boolean(result.enhancedImage));
       } catch (error) {
         if (requestIdRef.current !== requestId) return;
         setAnalysisError(getErrorMessage(error));
@@ -186,6 +189,7 @@ const Analyze = () => {
           analysisStage={analysisStage}
           analysisStatus={analysisStatus}
           file={file}
+          enhancedMediaUrl={enhancedImage}
           inputRef={inputRef}
           isEnhanced={isEnhanced}
           isVideo={isVideo}
@@ -197,6 +201,7 @@ const Analyze = () => {
         <AnalysisResultsPanel
           analysisProgress={displayedProgress}
           analysisStatus={analysisStatus}
+          enhancedMediaUrl={enhancedImage}
           file={file}
           isEnhanced={isEnhanced}
           isVideo={isVideo}

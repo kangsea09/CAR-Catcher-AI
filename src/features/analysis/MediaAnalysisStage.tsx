@@ -7,6 +7,7 @@ type MediaAnalysisStageProps = {
   analysisProgress: number;
   analysisStage: string;
   analysisStatus: AnalysisStatus;
+  enhancedMediaUrl: string;
   file: File | null;
   inputRef: RefObject<HTMLInputElement | null>;
   isEnhanced: boolean;
@@ -38,6 +39,7 @@ export const MediaAnalysisStage = ({
   analysisProgress,
   analysisStage,
   analysisStatus,
+  enhancedMediaUrl,
   file,
   inputRef,
   isEnhanced,
@@ -99,7 +101,19 @@ export const MediaAnalysisStage = ({
   <main className="relative flex min-h-[620px] items-center justify-center overflow-hidden bg-[#020a11]">
     {file ? (
       <div ref={stageRef} className="relative h-full min-h-[620px] w-full overflow-hidden">
-        {isVideo ? (
+        {isEnhanced && enhancedMediaUrl ? (
+          <img
+            alt="로컬 AI 복원 프레임"
+            className="absolute inset-0 h-full w-full object-contain"
+            onLoad={(event) => {
+              setIntrinsicSize({
+                height: event.currentTarget.naturalHeight,
+                width: event.currentTarget.naturalWidth,
+              });
+            }}
+            src={enhancedMediaUrl}
+          />
+        ) : isVideo ? (
           <video
             className={`absolute inset-0 h-full w-full object-contain transition-[filter] duration-700 ${
               isEnhanced

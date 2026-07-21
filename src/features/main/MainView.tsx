@@ -53,7 +53,7 @@ export const EmptyDetectionSidebar = () => (
       <span>SYS_STATUS: STANDBY</span>
       <span className="flex items-center gap-2">
         <span className="h-2 w-2 rounded-full bg-[#a9c8ff] shadow-[0_0_8px_#79aaff]" />
-        ONLINE
+        LOCAL MODE
       </span>
     </div>
   </aside>

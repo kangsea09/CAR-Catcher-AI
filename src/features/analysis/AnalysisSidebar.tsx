@@ -152,7 +152,7 @@ export const AnalysisSidebar = ({
       </span>
       <span className="flex items-center gap-2">
         <span className="h-1.5 w-1.5 rounded-full bg-[#63a4ff] shadow-[0_0_7px_#4f91ed]" />
-        ONLINE
+        LOCAL
       </span>
     </div>
   </aside>
