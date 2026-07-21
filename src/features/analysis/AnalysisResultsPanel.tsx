@@ -1,4 +1,76 @@
+import { useEffect, useRef, useState } from "react";
 import type { AnalysisStatus, Vehicle } from "./model";
+import {
+  lookupVehicleReference,
+  type VehicleReference,
+} from "../../services/vehicleReference";
+
+type VehicleCropProps = {
+  isVideo: boolean;
+  sourceUrl: string;
+  vehicle: Vehicle;
+};
+
+const VehicleCrop = ({ isVideo, sourceUrl, vehicle }: VehicleCropProps) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    if (isVideo) return;
+    const canvas = canvasRef.current;
+    if (!canvas || !sourceUrl) return;
+    const source = new Image();
+    source.onload = () => {
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      const sourceX = (vehicle.box.left / 100) * source.naturalWidth;
+      const sourceY = (vehicle.box.top / 100) * source.naturalHeight;
+      const sourceWidth = Math.max(1, (vehicle.box.width / 100) * source.naturalWidth);
+      const sourceHeight = Math.max(1, (vehicle.box.height / 100) * source.naturalHeight);
+      canvas.width = Math.round(sourceWidth);
+      canvas.height = Math.round(sourceHeight);
+      context.drawImage(
+        source,
+        sourceX,
+        sourceY,
+        sourceWidth,
+        sourceHeight,
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      );
+    };
+    source.src = sourceUrl;
+    return () => {
+      source.onload = null;
+    };
+  }, [isVideo, sourceUrl, vehicle]);
+
+  if (isVideo) {
+    return (
+      <video
+        className="absolute max-w-none"
+        muted
+        src={sourceUrl}
+        style={{
+          height: `${10000 / vehicle.box.height}%`,
+          left: `${(-vehicle.box.left / vehicle.box.width) * 100}%`,
+          top: `${(-vehicle.box.top / vehicle.box.height) * 100}%`,
+          width: `${10000 / vehicle.box.width}%`,
+        }}
+      />
+    );
+  }
+
+  return (
+    <canvas
+      aria-label={`${vehicle.id} 선택 차량 원본 영역`}
+      className="block h-full w-full"
+      ref={canvasRef}
+      role="img"
+    />
+  );
+};
 
 type AnalysisResultsPanelProps = {
   analysisProgress: number;
@@ -16,7 +88,6 @@ export const AnalysisResultsPanel = ({
   analysisProgress,
   analysisStatus,
   file,
-  isEnhanced,
   isVideo,
   mediaUrl,
   onRestart,
@@ -26,6 +97,41 @@ export const AnalysisResultsPanel = ({
   const selected = vehicles[selectedVehicle];
   const candidates = selected?.candidates ?? [];
   const analysisReasons = selected?.evidence ?? [];
+  const topCandidateName = candidates[0]?.name ?? "";
+  const [referenceState, setReferenceState] = useState<{
+    candidateName: string;
+    reference: VehicleReference | null;
+    resolved: boolean;
+  }>({ candidateName: "", reference: null, resolved: false });
+  const reference =
+    referenceState.candidateName === topCandidateName
+      ? referenceState.reference
+      : null;
+  const referenceResolved =
+    !topCandidateName ||
+    (referenceState.candidateName === topCandidateName && referenceState.resolved);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    if (!topCandidateName) return () => controller.abort();
+    void lookupVehicleReference(topCandidateName, controller.signal)
+      .then((result) => {
+        setReferenceState({
+          candidateName: topCandidateName,
+          reference: result,
+          resolved: true,
+        });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setReferenceState({
+          candidateName: topCandidateName,
+          reference: null,
+          resolved: true,
+        });
+      });
+    return () => controller.abort();
+  }, [topCandidateName]);
 
   return (
     <aside className="border-l border-[#25394b] bg-[#0d1d2d] p-6 xl:h-screen xl:overflow-y-auto">
@@ -44,27 +150,38 @@ export const AnalysisResultsPanel = ({
 
       <section className="mt-6">
         <p className="font-mono text-[10px] tracking-[0.14em] text-[#9cabc0]">
-          ENHANCED DETAIL
+          TOP-1 VEHICLE REFERENCE
         </p>
-        <div className="relative mt-3 aspect-[2.2/1] overflow-hidden border border-[#2e4357] bg-[#081521] p-1">
+        <div
+          className="relative mt-3 overflow-hidden border border-[#2e4357] bg-[#081521] p-1"
+          style={{
+            aspectRatio: reference
+              ? "4 / 3"
+              : selected
+                ? `${selected.box.width} / ${selected.box.height}`
+                : "4 / 3",
+          }}
+        >
           {file ? (
-            isVideo ? (
-              <video
-                className={`h-full w-full object-cover transition-[filter] duration-700 ${
-                  isEnhanced ? "brightness-125 contrast-110" : "brightness-75 contrast-125"
-                }`}
-                key={`detail-${mediaUrl}`}
-                muted
-                src={mediaUrl}
-              />
-            ) : (
+            reference ? (
               <img
-                alt={`${selected?.id ?? "선택 차량"} 보정 상세`}
-                className={`h-full w-full object-cover transition-[filter] duration-700 ${
-                  isEnhanced ? "brightness-125 contrast-110" : "brightness-75 contrast-125"
-                }`}
-                src={mediaUrl}
+                alt={`${topCandidateName} 참고 사진`}
+                className="h-full w-full object-contain"
+                onError={() => {
+                  setReferenceState({
+                    candidateName: topCandidateName,
+                    reference: null,
+                    resolved: true,
+                  });
+                }}
+                src={reference.url}
               />
+            ) : selected && referenceResolved ? (
+              <VehicleCrop isVideo={isVideo} sourceUrl={mediaUrl} vehicle={selected} />
+            ) : (
+              <div className="flex h-full items-center justify-center font-mono text-[10px] tracking-[0.12em] text-[#52677d]">
+                SEARCHING TOP-1 PHOTO
+              </div>
             )
           ) : (
             <div className="flex h-full items-center justify-center font-mono text-[10px] tracking-[0.12em] text-[#52677d]">
@@ -73,8 +190,19 @@ export const AnalysisResultsPanel = ({
           )}
           {file && (
             <span className="absolute bottom-3 left-3 border border-[#6c8eb2] bg-[#0b1c2d]/90 px-2 py-1 font-mono text-[9px] text-[#b8d4f3]">
-              FILTER: {isEnhanced ? "SHARPEN_V2" : "RAW_FRAME"}
+              {reference ? "REFERENCE: TOP-1 MATCH" : "SOURCE: SELECTED VEHICLE"}
             </span>
+          )}
+          {reference && (
+            <a
+              className="absolute bottom-3 right-3 max-w-[48%] truncate border border-[#6c8eb2] bg-[#0b1c2d]/90 px-2 py-1 font-mono text-[9px] text-[#b8d4f3] hover:text-white"
+              href={reference.sourceUrl}
+              rel="noreferrer"
+              target="_blank"
+              title={reference.title}
+            >
+              SOURCE: WIKIMEDIA
+            </a>
           )}
         </div>
       </section>
