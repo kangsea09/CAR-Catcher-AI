@@ -1,8 +1,7 @@
 import type { ChangeEvent, RefObject } from "react";
 import { BackIcon, ScanIcon, UploadIcon } from "../../components/Icons";
 import { SUPPORTED_MEDIA_ACCEPT } from "../../lib/media";
-import type { AnalysisStatus } from "./model";
-import { vehicles } from "./model";
+import type { AnalysisStatus, Vehicle } from "./model";
 
 type AnalysisSidebarProps = {
   analysisProgress: number;
@@ -14,6 +13,7 @@ type AnalysisSidebarProps = {
   onHome: () => void;
   onVehicleSelect: (index: number) => void;
   selectedVehicle: number;
+  vehicles: Vehicle[];
 };
 
 export const AnalysisSidebar = ({
@@ -26,6 +26,7 @@ export const AnalysisSidebar = ({
   onHome,
   onVehicleSelect,
   selectedVehicle,
+  vehicles,
 }: AnalysisSidebarProps) => (
   <aside className="flex min-h-0 flex-col border-r border-[#24384a] bg-[#0d1d2d] xl:h-screen">
     <div className="border-b border-[#26394b] p-6">
@@ -82,13 +83,15 @@ export const AnalysisSidebar = ({
         <span className="font-mono text-[10px] tracking-[0.12em] text-[#6d8197]">
           {analysisStatus === "analyzing"
             ? `SCANNING ${analysisProgress}%`
-            : file
+            : analysisStatus === "error"
+              ? "FAILED"
+              : file
               ? `${vehicles.length} DETECTED`
               : "WAITING"}
         </span>
       </div>
 
-      {file ? (
+      {file && vehicles.length > 0 ? (
         <div className="space-y-3">
           {vehicles.map((vehicle, index) => {
             const active = selectedVehicle === index;
@@ -139,7 +142,14 @@ export const AnalysisSidebar = ({
     </div>
 
     <div className="flex h-12 shrink-0 items-center justify-between border-t border-[#26394b] px-5 font-mono text-[10px] tracking-[0.1em] text-[#74859a]">
-      <span>AI_ENGINE: {analysisStatus === "analyzing" ? "SCANNING" : "ACTIVE"}</span>
+      <span>
+        AI_ENGINE:{" "}
+        {analysisStatus === "analyzing"
+          ? "SCANNING"
+          : analysisStatus === "error"
+            ? "ERROR"
+            : "ACTIVE"}
+      </span>
       <span className="flex items-center gap-2">
         <span className="h-1.5 w-1.5 rounded-full bg-[#63a4ff] shadow-[0_0_7px_#4f91ed]" />
         ONLINE

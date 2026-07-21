@@ -1,16 +1,33 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AnalysisResultsPanel } from "../features/analysis/AnalysisResultsPanel";
 import { AnalysisSidebar } from "../features/analysis/AnalysisSidebar";
 import { MediaAnalysisStage } from "../features/analysis/MediaAnalysisStage";
-import type { AnalysisStatus } from "../features/analysis/model";
+import type {
+  AnalysisStatus,
+  Vehicle,
+} from "../features/analysis/model";
 import { useObjectUrl } from "../hooks/useObjectUrl";
 import { isSupportedMediaFile, isVideoFile } from "../lib/media";
+import { analyzeVehicleMedia } from "../services/vehicleAnalysis";
 import "../App.css";
 
 type AnalysisLocationState = {
   file?: File;
+};
+
+const stageLabels: Record<string, string> = {
+  decode: "미디어 디코딩 중",
+  "tone-map": "톤 매핑 중",
+  deblur: "디블러링 중",
+  "frame-extract": "연속 프레임 추출 중",
+  "frame-stack": "연속 프레임 합성 중",
+  encode: "보정 이미지 생성 중",
+  "request-package": "분석 자료 준비 중",
+  "gemini-analysis": "Gemini 차량 분석 중",
+  "response-validation": "분석 결과 검증 중",
+  complete: "분석 완료",
 };
 
 const getInitialFile = (state: unknown) => {
@@ -18,54 +35,120 @@ const getInitialFile = (state: unknown) => {
   return file instanceof File ? file : null;
 };
 
+const getErrorMessage = (error: unknown) => {
+  const message = error instanceof Error ? error.message : "차량 분석에 실패했습니다.";
+
+  if (message.includes("413") || message.toLowerCase().includes("too large")) {
+    return "분석 요청 크기가 제한을 초과했습니다. 더 짧거나 용량이 작은 동영상을 사용하세요.";
+  }
+
+  if (message.includes("App Check")) {
+    return "Firebase App Check 인증에 실패했습니다. 디버그 토큰 또는 배포 도메인 설정을 확인하세요.";
+  }
+
+  return message;
+};
+
 const Analyze = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
+  const initialRunStartedRef = useRef(false);
+  const requestIdRef = useRef(0);
+  const analysisTargetProgressRef = useRef(0);
   const [file, setFile] = useState<File | null>(() => getInitialFile(location.state));
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState(0);
   const [isEnhanced, setIsEnhanced] = useState(false);
-  const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>(() =>
-    getInitialFile(location.state) ? "analyzing" : "idle",
-  );
+  const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>("idle");
   const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [analysisStage, setAnalysisStage] = useState("분석 준비 중");
+  const [analysisError, setAnalysisError] = useState("");
   const mediaUrl = useObjectUrl(file);
   const isVideo = isVideoFile(file);
+  const displayedProgress = Math.floor(analysisProgress);
 
   useEffect(() => {
-    if (!file || analysisStatus !== "analyzing") return;
+    if (analysisStatus !== "analyzing") return;
 
-    const startedAt = Date.now();
-    const duration = isVideo ? 6200 : 4800;
     const timer = window.setInterval(() => {
-      const elapsed = Date.now() - startedAt;
-      const nextProgress = Math.min(100, Math.round((elapsed / duration) * 100));
+      setAnalysisProgress((current) => {
+        const target = analysisTargetProgressRef.current;
 
-      setAnalysisProgress(nextProgress);
-      if (nextProgress >= 100) {
-        window.clearInterval(timer);
-        setAnalysisStatus("complete");
-        setIsEnhanced(true);
-      }
+        if (target >= 100) {
+          const remaining = 100 - current;
+          return Math.min(100, current + Math.max(0.8, remaining * 0.14));
+        }
+
+        const continuousTarget = Math.min(97, Math.max(target, current + 0.35));
+        const distance = continuousTarget - current;
+        const next = current + Math.min(1.2, Math.max(0.18, distance * 0.16));
+        return Math.min(97, Math.round(next * 10) / 10);
+      });
     }, 80);
 
     return () => window.clearInterval(timer);
-  }, [analysisStatus, file, isVideo]);
+  }, [analysisStatus]);
 
-  const startAnalysis = (nextFile?: File) => {
-    const analysisFile = nextFile ?? file;
-    if (!analysisFile) return;
+  const startAnalysis = useCallback(
+    async (nextFile?: File) => {
+      const analysisFile = nextFile ?? file;
+      if (!analysisFile) return;
 
-    setFile(analysisFile);
-    setSelectedVehicle(0);
-    setIsEnhanced(false);
-    setAnalysisProgress(0);
-    setAnalysisStatus("analyzing");
-  };
+      const requestId = requestIdRef.current + 1;
+      requestIdRef.current = requestId;
+      setFile(analysisFile);
+      setVehicles([]);
+      setSelectedVehicle(0);
+      setIsEnhanced(false);
+      analysisTargetProgressRef.current = 0;
+      setAnalysisProgress(0);
+      setAnalysisStage("분석 준비 중");
+      setAnalysisError("");
+      setAnalysisStatus("analyzing");
+
+      try {
+        const result = await analyzeVehicleMedia(analysisFile, (update) => {
+          if (requestIdRef.current !== requestId) return;
+          analysisTargetProgressRef.current = Math.max(
+            analysisTargetProgressRef.current,
+            Math.min(97, update.progress),
+          );
+          setAnalysisStage(stageLabels[update.stage] ?? "AI 분석 중");
+        });
+
+        if (requestIdRef.current !== requestId) return;
+        analysisTargetProgressRef.current = 100;
+        await new Promise((resolve) => window.setTimeout(resolve, 700));
+        if (requestIdRef.current !== requestId) return;
+        setVehicles(result.vehicles);
+        setAnalysisProgress(100);
+        setAnalysisStage("분석 완료");
+        setAnalysisStatus("complete");
+        setIsEnhanced(result.vehicles.length > 0);
+      } catch (error) {
+        if (requestIdRef.current !== requestId) return;
+        setAnalysisError(getErrorMessage(error));
+        setAnalysisStatus("error");
+        setAnalysisStage("분석 실패");
+      }
+    },
+    [file],
+  );
+
+  useEffect(() => {
+    const initialFile = getInitialFile(location.state);
+    if (initialFile && !initialRunStartedRef.current) {
+      initialRunStartedRef.current = true;
+      void startAnalysis(initialFile);
+    }
+  }, [location.state, startAnalysis]);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const nextFile = event.target.files?.[0];
-    if (nextFile && isSupportedMediaFile(nextFile)) startAnalysis(nextFile);
+    if (nextFile && isSupportedMediaFile(nextFile)) {
+      void startAnalysis(nextFile);
+    }
   };
 
   const handleVehicleSelect = (index: number) => {
@@ -75,10 +158,19 @@ const Analyze = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#061523] font-sans text-[#c9d4e5]">
+    <div className="relative min-h-screen bg-[#061523] font-sans text-[#c9d4e5]">
+      {analysisError && (
+        <div
+          className="fixed left-1/2 top-4 z-[70] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 border border-[#7e4552] bg-[#311b25]/95 px-5 py-3 text-center text-sm text-[#ffd0d9] shadow-xl backdrop-blur"
+          role="alert"
+        >
+          {analysisError}
+        </div>
+      )}
+
       <div className="grid min-h-screen grid-cols-1 xl:grid-cols-[320px_minmax(540px,1fr)_400px]">
         <AnalysisSidebar
-          analysisProgress={analysisProgress}
+          analysisProgress={displayedProgress}
           analysisStatus={analysisStatus}
           file={file}
           inputRef={inputRef}
@@ -87,9 +179,11 @@ const Analyze = () => {
           onHome={() => navigate("/")}
           onVehicleSelect={handleVehicleSelect}
           selectedVehicle={selectedVehicle}
+          vehicles={vehicles}
         />
         <MediaAnalysisStage
-          analysisProgress={analysisProgress}
+          analysisProgress={displayedProgress}
+          analysisStage={analysisStage}
           analysisStatus={analysisStatus}
           file={file}
           inputRef={inputRef}
@@ -98,16 +192,18 @@ const Analyze = () => {
           mediaUrl={mediaUrl}
           onVehicleSelect={handleVehicleSelect}
           selectedVehicle={selectedVehicle}
+          vehicles={vehicles}
         />
         <AnalysisResultsPanel
-          analysisProgress={analysisProgress}
+          analysisProgress={displayedProgress}
           analysisStatus={analysisStatus}
           file={file}
           isEnhanced={isEnhanced}
           isVideo={isVideo}
           mediaUrl={mediaUrl}
-          onRestart={() => startAnalysis()}
+          onRestart={() => void startAnalysis()}
           selectedVehicle={selectedVehicle}
+          vehicles={vehicles}
         />
       </div>
     </div>
