@@ -1,10 +1,11 @@
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
 import { AnalyzingIcon, ScanIcon } from "../../components/Icons";
 import type { AnalysisStatus, Vehicle } from "./model";
-import { vehicles } from "./model";
 
 type MediaAnalysisStageProps = {
   analysisProgress: number;
+  analysisStage: string;
   analysisStatus: AnalysisStatus;
   file: File | null;
   inputRef: RefObject<HTMLInputElement | null>;
@@ -13,17 +14,29 @@ type MediaAnalysisStageProps = {
   mediaUrl: string;
   onVehicleSelect: (index: number) => void;
   selectedVehicle: number;
+  vehicles: Vehicle[];
 };
 
-const getBoxStyle = (vehicle: Vehicle): CSSProperties => ({
-  left: `${vehicle.box.left}%`,
-  top: `${vehicle.box.top}%`,
-  width: `${vehicle.box.width}%`,
-  height: `${vehicle.box.height}%`,
+type MediaBounds = {
+  height: number;
+  left: number;
+  top: number;
+  width: number;
+};
+
+const getBoxStyle = (
+  vehicle: Vehicle,
+  mediaBounds: MediaBounds,
+): CSSProperties => ({
+  left: mediaBounds.left + (vehicle.box.left / 100) * mediaBounds.width,
+  top: mediaBounds.top + (vehicle.box.top / 100) * mediaBounds.height,
+  width: (vehicle.box.width / 100) * mediaBounds.width,
+  height: (vehicle.box.height / 100) * mediaBounds.height,
 });
 
 export const MediaAnalysisStage = ({
   analysisProgress,
+  analysisStage,
   analysisStatus,
   file,
   inputRef,
@@ -32,10 +45,60 @@ export const MediaAnalysisStage = ({
   mediaUrl,
   onVehicleSelect,
   selectedVehicle,
-}: MediaAnalysisStageProps) => (
+  vehicles,
+}: MediaAnalysisStageProps) => {
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [intrinsicSize, setIntrinsicSize] = useState({ height: 1, width: 1 });
+  const [mediaBounds, setMediaBounds] = useState<MediaBounds>({
+    height: 0,
+    left: 0,
+    top: 0,
+    width: 0,
+  });
+
+  const updateMediaBounds = useCallback(() => {
+    const stage = stageRef.current;
+    if (!stage || intrinsicSize.width <= 0 || intrinsicSize.height <= 0) return;
+
+    const stageWidth = stage.clientWidth;
+    const stageHeight = stage.clientHeight;
+    const mediaRatio = intrinsicSize.width / intrinsicSize.height;
+    const stageRatio = stageWidth / Math.max(1, stageHeight);
+
+    if (mediaRatio > stageRatio) {
+      const height = stageWidth / mediaRatio;
+      setMediaBounds({
+        height,
+        left: 0,
+        top: (stageHeight - height) / 2,
+        width: stageWidth,
+      });
+      return;
+    }
+
+    const width = stageHeight * mediaRatio;
+    setMediaBounds({
+      height: stageHeight,
+      left: (stageWidth - width) / 2,
+      top: 0,
+      width,
+    });
+  }, [intrinsicSize]);
+
+  useLayoutEffect(() => {
+    updateMediaBounds();
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const observer = new ResizeObserver(updateMediaBounds);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, [updateMediaBounds]);
+
+  return (
   <main className="relative flex min-h-[620px] items-center justify-center overflow-hidden bg-[#020a11]">
     {file ? (
-      <div className="relative h-full min-h-[620px] w-full overflow-hidden">
+      <div ref={stageRef} className="relative h-full min-h-[620px] w-full overflow-hidden">
         {isVideo ? (
           <video
             className={`absolute inset-0 h-full w-full object-contain transition-[filter] duration-700 ${
@@ -46,6 +109,12 @@ export const MediaAnalysisStage = ({
             controls
             key={mediaUrl}
             muted
+            onLoadedMetadata={(event) => {
+              setIntrinsicSize({
+                height: event.currentTarget.videoHeight,
+                width: event.currentTarget.videoWidth,
+              });
+            }}
             src={mediaUrl}
           >
             브라우저에서 동영상 재생을 지원하지 않습니다.
@@ -58,6 +127,12 @@ export const MediaAnalysisStage = ({
                 ? "brightness-[1.25] contrast-[1.08] saturate-[1.05]"
                 : "brightness-[0.72] contrast-[1.12] saturate-[0.7]"
             }`}
+            onLoad={(event) => {
+              setIntrinsicSize({
+                height: event.currentTarget.naturalHeight,
+                width: event.currentTarget.naturalWidth,
+              });
+            }}
             src={mediaUrl}
           />
         )}
@@ -80,7 +155,7 @@ export const MediaAnalysisStage = ({
               disabled={analysisStatus !== "complete"}
               key={vehicle.id}
               onClick={() => onVehicleSelect(index)}
-              style={getBoxStyle(vehicle)}
+              style={getBoxStyle(vehicle, mediaBounds)}
               type="button"
             >
               <span
@@ -118,7 +193,7 @@ export const MediaAnalysisStage = ({
                 <AnalyzingIcon />
               </span>
               <span className="relative mt-3 font-mono text-xs tracking-[0.14em]">
-                분석 중 ...
+                {analysisStage}
               </span>
               <span className="relative mt-1 font-mono text-sm font-semibold text-[#d2e3ff]">
                 {analysisProgress}%
@@ -153,4 +228,5 @@ export const MediaAnalysisStage = ({
       </div>
     )}
   </main>
-);
+  );
+};

@@ -1,30 +1,50 @@
 # CAR-Catcher AI
 
-> **야간/저화질 CCTV 및 블랙박스 기반 다중 차량 자동 감지 및 AI 정밀 식별 서비스**
+JPG, PNG 또는 MP4 수사 자료에서 차량을 감지하고 예상 차종과 판단 근거를 제공하는
+React 기반 분석 UI입니다.
 
----
+## 실행
 
-## 프로젝트 소개 (Project Overview)
+```bash
+npm install
+npm run dev
+```
 
-**CAR-Catcher AI**는 야간이나 저화질 환경의 CCTV/블랙박스(사진 및 동영상) 자료에서 화면 내 존재하는 모든 차량을 자동 감지하고, 수사관/관제사가 원하는 특정 차량을 원클릭으로 정밀 분석하여 **차종**을 즉시 제공하는 웹 서비스입니다.
+## Gemini 연결
 
----
+이 프로젝트는 Gemini API 키를 브라우저 번들에 직접 포함하지 않습니다. 서버를 직접
+운영하지 않으면서 키를 보호하기 위해 Firebase AI Logic과 Firebase App Check를
+사용합니다.
 
-## 핵심 기능 (Key Features)
+1. Firebase Console에서 프로젝트와 Web 앱을 생성합니다.
+2. `AI Services > AI Logic > Get started`에서 Gemini Developer API를 선택합니다.
+3. `Security > App Check`에서 Web 앱과 reCAPTCHA Enterprise를 등록하고 Firebase AI
+   Logic 적용을 강제합니다.
+4. `.env.example`을 `.env.local`로 복사하고 Firebase Web 설정값과 App Check Site
+   Key를 입력합니다.
+5. 로컬 개발에서는 콘솔에 출력된 App Check Debug Token을 Firebase Console에
+   등록합니다.
 
-- **통합 매체 업로드 (Multi-Format Support)**
-  - 사진(`.jpg`, `.png`) 및 동영상(`.mp4`) 파일 모두 대응
-- **다중 차량 자동 감지 (Auto Detection)**
-  - 화면 내 존재하는 여러 대의 차량을 식별하여 리스트화
-- **원클릭 정밀 분석 (One-Click Analysis)**
-  - 특정 차량 선택 시 Top-3 예상 차종, 신뢰도(%), 세부 특징(헤드램프, 휠, C필러 등) 카드 출력
-- **시각적 보정 연출 (Visual Enhancement)**
-  - CSS 이미지 필터 기반의 Before/After 화질 보정 연출 뷰 제공
+```bash
+Copy-Item .env.example .env.local
+```
 
----
+`VITE_FIREBASE_API_KEY`는 Firebase Web 설정용 공개 식별자입니다. Google AI Studio에서
+발급한 Gemini API 키를 `.env.local`이나 React 코드에 입력하지 마세요.
 
-## 기술 스택 (Tech Stack)
+## 분석 파이프라인
 
-- **Frontend:** React (Vite), JavaScript
-- **AI Engine:** Google Gemini 1.5 Flash API
-- **Deployment:** Vercel
+- 이미지: 크기 최적화 → 톤 매핑 → 샤프닝 기반 디블러링 → 원본·보정본 분석
+- 동영상: 대표 프레임 추출 → 연속 5프레임 전역 흔들림 정렬 및 평균 합성 →
+  톤 매핑·디블러링 → 원본 또는 대표 프레임 분석
+- Gemini: 구조화 JSON으로 차량 위치, 색상, 차체 유형, Top-3 차종과 판단 근거 반환
+
+동영상이 인라인 요청 제한에 가까우면 원본 동영상 대신 대표 프레임과 합성 프레임만
+전송합니다.
+
+## 검사
+
+```bash
+npm run build
+npm run lint
+```
