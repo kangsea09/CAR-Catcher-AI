@@ -1,5 +1,4 @@
-import { analysisReasons, candidates, vehicles } from "./model";
-import type { AnalysisStatus } from "./model";
+import type { AnalysisStatus, Vehicle } from "./model";
 
 type AnalysisResultsPanelProps = {
   analysisProgress: number;
@@ -10,6 +9,7 @@ type AnalysisResultsPanelProps = {
   mediaUrl: string;
   onRestart: () => void;
   selectedVehicle: number;
+  vehicles: Vehicle[];
 };
 
 export const AnalysisResultsPanel = ({
@@ -21,8 +21,11 @@ export const AnalysisResultsPanel = ({
   mediaUrl,
   onRestart,
   selectedVehicle,
+  vehicles,
 }: AnalysisResultsPanelProps) => {
   const selected = vehicles[selectedVehicle];
+  const candidates = selected?.candidates ?? [];
+  const analysisReasons = selected?.evidence ?? [];
 
   return (
     <aside className="border-l border-[#25394b] bg-[#0d1d2d] p-6 xl:h-screen xl:overflow-y-auto">
@@ -33,7 +36,9 @@ export const AnalysisResultsPanel = ({
             ? `ANALYZING ${analysisProgress}%`
             : analysisStatus === "complete"
               ? "ANALYSIS COMPLETE"
-              : "AUTO DETECTION"}
+              : analysisStatus === "error"
+                ? "ANALYSIS FAILED"
+                : "AUTO DETECTION"}
         </span>
       </div>
 
@@ -54,7 +59,7 @@ export const AnalysisResultsPanel = ({
               />
             ) : (
               <img
-                alt={`${selected.id} 보정 상세`}
+                alt={`${selected?.id ?? "선택 차량"} 보정 상세`}
                 className={`h-full w-full object-cover transition-[filter] duration-700 ${
                   isEnhanced ? "brightness-125 contrast-110" : "brightness-75 contrast-125"
                 }`}
@@ -93,7 +98,9 @@ export const AnalysisResultsPanel = ({
           <h3 className="font-mono text-[11px] tracking-[0.1em] text-[#aab8ca]">
             Top-3 예상 차종
           </h3>
-          <span className="font-mono text-[10px] text-[#66819f]">{selected.id}</span>
+          <span className="font-mono text-[10px] text-[#66819f]">
+            {selected?.id ?? "WAITING"}
+          </span>
         </div>
         <div className="mt-4 space-y-4">
           {candidates.map((candidate, index) => (
