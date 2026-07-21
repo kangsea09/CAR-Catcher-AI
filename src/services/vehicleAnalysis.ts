@@ -7,7 +7,6 @@ import {
   getAI,
   getGenerativeModel,
   GoogleAIBackend,
-  Schema,
 } from "firebase/ai";
 import type { AnalysisResult, Vehicle } from "../features/analysis/model";
 import {
@@ -28,45 +27,6 @@ type InlineDataPart = {
   };
 };
 
-const vehicleSchema = Schema.object({
-  properties: {
-    summary: Schema.string(),
-    vehicles: Schema.array({
-      maxItems: 50,
-      items: Schema.object({
-        properties: {
-          id: Schema.string(),
-          description: Schema.string(),
-          confidence: Schema.number(),
-          color: Schema.string(),
-          bodyType: Schema.string(),
-          box: Schema.object({
-            properties: {
-              left: Schema.number(),
-              top: Schema.number(),
-              width: Schema.number(),
-              height: Schema.number(),
-            },
-          }),
-          candidates: Schema.array({
-            maxItems: 3,
-            items: Schema.object({
-              properties: {
-                name: Schema.string(),
-                confidence: Schema.number(),
-              },
-            }),
-          }),
-          evidence: Schema.array({
-            maxItems: 6,
-            items: Schema.string(),
-          }),
-        },
-      }),
-    }),
-  },
-});
-
 const requiredFirebaseConfig = () => {
   const config = {
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -86,7 +46,7 @@ const requiredFirebaseConfig = () => {
 
 let appCheckInitialized = false;
 
-const createModel = (useResponseSchema = true) => {
+const createModel = () => {
   const app =
     getApps().length > 0 ? getApp() : initializeApp(requiredFirebaseConfig());
   const siteKey = import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY;
@@ -119,7 +79,6 @@ const createModel = (useResponseSchema = true) => {
     model: import.meta.env.VITE_GEMINI_MODEL || "gemini-3.5-flash",
     generationConfig: {
       responseMimeType: "application/json",
-      ...(useResponseSchema ? { responseSchema: vehicleSchema } : {}),
       temperature: 0.15,
     },
   });
@@ -214,16 +173,6 @@ ${processingNote}
 - {"summary":"분석 요약","vehicles":[{"id":"VEH_01","description":"차량 설명","confidence":0,"color":"색상","bodyType":"차체 유형","box":{"left":0,"top":0,"width":0,"height":0},"candidates":[{"name":"예상 차종","confidence":0}],"evidence":["판단 근거"]}]}
 `;
 
-const isInvalidArgumentError = (error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes("invalid_argument") ||
-    normalized.includes("invalid argument") ||
-    normalized.includes("400")
-  );
-};
-
 const mapProcessingProgress = (
   update: ProcessingProgress,
   onProgress: AnalysisProgressHandler,
@@ -255,16 +204,7 @@ export const analyzeVehicleMedia = async (
 
   onProgress({ progress: 68, stage: "gemini-analysis" });
   const prompt = buildPrompt(prepared.processingNote, prepared.media);
-  let result;
-  try {
-    result = await model.generateContent([prompt, ...parts]);
-  } catch (error) {
-    if (!isInvalidArgumentError(error)) throw error;
-
-    onProgress({ progress: 72, stage: "gemini-analysis" });
-    const fallbackModel = createModel(false);
-    result = await fallbackModel.generateContent([prompt, ...parts]);
-  }
+  const result = await model.generateContent([prompt, ...parts]);
 
   onProgress({ progress: 96, stage: "response-validation" });
   const parsed = JSON.parse(result.response.text()) as AnalysisResult;
